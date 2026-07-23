@@ -3,7 +3,7 @@ import os
 import requests
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from PIL import Image, ImageOps, ImageDraw, ImageFont
+from PIL import Image, ImageOps, ImageDraw, ImageFont, ImageFilter
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -61,25 +61,62 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     width, height = base_img.size
 
     # -------------------------------------------------------------
-    # 1. TOP-LEFT LOGO
+    # 1. TOP-LEFT LOGO WITH BLACK BORDER & DROP SHADOW
     # -------------------------------------------------------------
     top_logo = get_top_logo()
     top_w = int(width * 0.12)  # Base image ka 12% width
     top_logo = top_logo.resize((top_w, top_w), Image.Resampling.LANCZOS)
     
-    margin = int(width * 0.03)
-    base_img.paste(top_logo, (margin, margin), top_logo)
+    # Outer Canvas Canvas banayenge Shadow aur Border accommodate karne ke liye
+    padding = int(top_w * 0.2)
+    canvas_size = top_w + (padding * 2)
+    logo_canvas = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+
+    # Shadow layer banayein (Soft dark shadow offsetted to bottom-right)
+    shadow_offset = (int(top_w * 0.04), int(top_w * 0.04))
+    shadow_mask = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow_mask)
+    
+    # Shadow circle draw
+    shadow_draw.ellipse(
+        [
+            padding + shadow_offset[0], 
+            padding + shadow_offset[1], 
+            padding + top_w + shadow_offset[0], 
+            padding + top_w + shadow_offset[1]
+        ], 
+        fill=(0, 0, 0, 160)
+    )
+    shadow = shadow_mask.filter(ImageFilter.GaussianBlur(radius=int(top_w * 0.05)))
+    logo_canvas.paste(shadow, (0, 0), shadow)
+
+    # Black Border Circle Draw Karein (3px thick outline)
+    border_draw = ImageDraw.Draw(logo_canvas)
+    border_thickness = max(2, int(top_w * 0.03))
+    border_rect = [
+        padding - border_thickness, 
+        padding - border_thickness, 
+        padding + top_w + border_thickness, 
+        padding + top_w + border_thickness
+    ]
+    border_draw.ellipse(border_rect, fill=(0, 0, 0, 255))
+
+    # Center Logo Paste Karein
+    logo_canvas.paste(top_logo, (padding, padding), top_logo)
+
+    # Base Image par apply karein
+    margin = int(width * 0.03) - padding
+    base_img.paste(logo_canvas, (margin, margin), logo_canvas)
 
     # -------------------------------------------------------------
     # 2. BOTTOM LOW OPACITY BLACK STRIP WITH TEXT
     # -------------------------------------------------------------
     strip_height = int(height * 0.08)  # Strip height (Image height ka 8%)
     
-    # Overlay canvas for drawing transparent shape
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     
-    # Black banner width 80% opacity (RGB: 0,0,0, Alpha: 200)
+    # Black banner (Alpha: 200)
     draw.rectangle(
         [(0, height - strip_height), (width, height)],
         fill=(0, 0, 0, 200)
@@ -87,14 +124,14 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
 
     # Text Settings
     text = "Join @kt_deals"
-    font_size = max(14, int(strip_height * 0.45))  # Font size scaled to strip height
+    font_size = max(14, int(strip_height * 0.45))
     
     try:
         font = ImageFont.truetype("arial.ttf", font_size)
     except IOError:
         font = ImageFont.load_default()
 
-    # Calculate text dimensions to center it
+    # Center text alignment
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
@@ -102,10 +139,9 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     text_x = (width - text_w) // 2
     text_y = (height - strip_height) + (strip_height - text_h) // 2 - bbox[1]
 
-    # White text draw karo overlay par
     draw.text((text_x, text_y), text, fill=(255, 255, 255, 255), font=font)
 
-    # Base Image ke saath Combine karo
+    # Base Image ke saath Combine karein
     base_img = Image.alpha_composite(base_img, overlay)
 
     # -------------------------------------------------------------
