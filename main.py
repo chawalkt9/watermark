@@ -3,7 +3,7 @@ import os
 import requests
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from PIL import Image, ImageOps, ImageDraw
+from PIL import Image, ImageOps, ImageDraw, ImageEnhance
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -24,19 +24,25 @@ threading.Thread(target=run_dummy_server, daemon=True).start()
 # ---------------------------------------------
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-LOGO_URL = os.getenv(
-    "LOGO_URL", 
-    "https://yt3.googleusercontent.com/LSfY1cV1wEWgXQOp3IMnKBVXo4Akr-FrNUqPa-RDo5Ls-o4YW0yqn_-ZHZzo40j8irSyLAc4=s160-c-k-c0x00ffffff-no-rj"
+
+# Logos URLs
+TOP_LOGO_URL = os.getenv(
+    "TOP_LOGO_URL", 
+    "https://cdn5.telesco.pe/file/aSf192hYDvLjeIu3QeKrEm5d5xwzUYN5wKLLNfbvOpuz6PKzQPyZ4up71rfuxRSwujzDh-AsMI4xOSplp2HjZ7lsn9-s4L-99jJG7VlKtqcG_62mytf04QZet_QoVVWlxYscNDhofqiPec2HCXUsc7DSV0c8BBLA2muRkN6IGhA9XZhjrYJqLGbLH9HFaQwImozgwXi-lBD_89f8XoiqIMS9KZaW8udXb-aEPaBgFk_sRHPr_joYXxJnXlo1pJSV8dAQuEzoxfBTR1eppST0l-BpNTDeJaPyWslYguzSIC3rr5ePrqlQ3Yldmkc0uXQhe_68AlZ6Jzdwfku0UTrbZw.jpg"
 )
 
-CACHED_LOGO = None
+MIDDLE_LOGO_URL = os.getenv(
+    "MIDDLE_LOGO_URL",
+    "https://cdn5.telesco.pe/file/vuTl6K9-MD_rpJ3gWBdPWked_riERhAEP7DHkYGsQspTrk64l549Jo8wXnKjib0UxZ7HYHUUCP6xYXLyWGl_Nw01vsyw4W5AsfRApZIQalkrd9Q0bTsKOPhhlBW2zEO663YA1Bb-eMWLREM_NKqLQqGiY6eB-sFYKUeAD86aA0L4bRz1gADdZOg8MIN8-26rRfBeZ_XhyJ5VYzpKNoHB-yvde1eLxDC9DdslzuBERkE8uvWiVfGq3lCAj8EUHYt4_GzBRpTUIfH8baSUkIdaG_iQUl-XJtiqI6Jo4er-VkSVCf54izSn4NRGZrwViFiLtPzXiRU_tIFWUyuHft8slw.jpg"
+)
 
-def get_logo_image() -> Image.Image:
-    global CACHED_LOGO
-    if CACHED_LOGO is not None:
-        return CACHED_LOGO.copy()
+# Caching for faster performance
+CACHED_TOP_LOGO = None
+CACHED_MIDDLE_LOGO = None
 
-    response = requests.get(LOGO_URL, timeout=10)
+def get_circular_logo(url: str) -> Image.Image:
+    """Logo URL se download karke circular transparent PNG banata hai"""
+    response = requests.get(url, timeout=10)
     logo_img = Image.open(io.BytesIO(response.content)).convert("RGBA")
     
     size = (min(logo_img.size), min(logo_img.size))
@@ -48,24 +54,55 @@ def get_logo_image() -> Image.Image:
     
     output = ImageOps.fit(logo_img, size, centering=(0.5, 0.5))
     output.putalpha(mask)
-    
-    CACHED_LOGO = output
-    return CACHED_LOGO.copy()
+    return output
 
-def add_logo_watermark(base_image_bytes: bytes) -> io.BytesIO:
+def get_top_logo() -> Image.Image:
+    global CACHED_TOP_LOGO
+    if CACHED_TOP_LOGO is None:
+        CACHED_TOP_LOGO = get_circular_logo(TOP_LOGO_URL)
+    return CACHED_TOP_LOGO.copy()
+
+def get_middle_logo() -> Image.Image:
+    global CACHED_MIDDLE_LOGO
+    if CACHED_MIDDLE_LOGO is None:
+        CACHED_MIDDLE_LOGO = get_circular_logo(MIDDLE_LOGO_URL)
+    return CACHED_MIDDLE_LOGO.copy()
+
+def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     base_img = Image.open(io.BytesIO(base_image_bytes)).convert("RGBA")
     width, height = base_img.size
 
-    logo = get_logo_image()
-
-    logo_w = int(width * 0.12)
-    logo = logo.resize((logo_w, logo_w), Image.Resampling.LANCZOS)
-
+    # -------------------------------------------------------------
+    # 1. TOP-LEFT LOGO
+    # -------------------------------------------------------------
+    top_logo = get_top_logo()
+    top_w = int(width * 0.12)  # Base image ka 12% width
+    top_logo = top_logo.resize((top_w, top_w), Image.Resampling.LANCZOS)
+    
     margin = int(width * 0.03)
-    position = (margin, margin)
+    base_img.paste(top_logo, (margin, margin), top_logo)
 
-    base_img.paste(logo, position, logo)
+    # -------------------------------------------------------------
+    # 2. MIDDLE LOGO (50% OPACITY)
+    # -------------------------------------------------------------
+    mid_logo = get_middle_logo()
+    mid_w = int(width * 0.35)  # Center logo width = 35% of image width
+    mid_logo = mid_logo.resize((mid_w, mid_w), Image.Resampling.LANCZOS)
 
+    # Opacity 50% karne ke liye
+    alpha = mid_logo.split()[3]
+    alpha = ImageEnhance.Brightness(alpha).enhance(0.50)  # 50% opacity
+    mid_logo.putalpha(alpha)
+
+    # Center Position Calculate Karein
+    mid_x = (width - mid_w) // 2
+    mid_y = (height - mid_w) // 2
+    
+    base_img.paste(mid_logo, (mid_x, mid_y), mid_logo)
+
+    # -------------------------------------------------------------
+    # Output Buffer Save
+    # -------------------------------------------------------------
     output_io = io.BytesIO()
     base_img.convert("RGB").save(output_io, format="JPEG", quality=95)
     output_io.seek(0)
@@ -74,7 +111,7 @@ def add_logo_watermark(base_image_bytes: bytes) -> io.BytesIO:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Hi! Mujhe koi bhi product image bhejiyen, main Top-Left corner me logo add karke bhej dunga."
+        "👋 Hi! Mujhe koi bhi product image bhejiyen, main Top-Left aur Center me logo add karke bhej dunga."
     )
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,7 +121,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_file = await update.message.photo[-1].get_file()
         image_bytes = await photo_file.download_as_bytearray()
 
-        processed_image = add_logo_watermark(image_bytes)
+        processed_image = add_watermarks(image_bytes)
 
         await update.message.reply_photo(photo=processed_image)
         await status_msg.delete()
