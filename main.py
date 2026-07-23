@@ -33,7 +33,7 @@ TOP_LOGO_URL = os.getenv(
 
 MIDDLE_LOGO_URL = os.getenv(
     "MIDDLE_LOGO_URL",
-    "https://chatgpt.com/backend-api/estuary/content?id=file_00000000475082079d69d65adda877c4&ts=495774&p=fs&cid=1&sig=1f1773a0b2c08ce58a3335c60a828e5ee2affb98174141e679314ea8b6ff2296&v=0"
+    "https://plain-apac-prod-public.komododecks.com/202607/23/mNVcqesICPeaxPq1s4ui/image.png"
 )
 
 # Caching for faster performance
