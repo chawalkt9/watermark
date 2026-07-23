@@ -1,10 +1,12 @@
 import io
 import os
+import re
 import requests
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
 # --- DUMMY WEB SERVER FOR RENDER FREE TIER ---
@@ -117,6 +119,15 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     
     return output_io
 
+def process_caption(caption: str) -> str:
+    """Caption ke price part (jaise @213 ya @ 213) ko bold dynamic formatting deta hai."""
+    if not caption:
+        return ""
+    
+    # Regular expression to replace '@123' or '@ 123' with '**@123**' or '**@ 123**'
+    formatted_caption = re.sub(r'(@\s*\d+)', r'**\1**', caption)
+    return formatted_caption
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Hi! Mujhe koi bhi product image bhejiyen, main Top-Left logo aur Bottom me banner add karke bhej dunga."
@@ -126,12 +137,32 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.message.reply_text("⏳ Processing Image...")
 
     try:
+        # Original caption aur entities extract karna
+        caption = update.message.caption or ""
+        caption_entities = update.message.caption_entities
+
         photo_file = await update.message.photo[-1].get_file()
         image_bytes = await photo_file.download_as_bytearray()
 
         processed_image = add_watermarks(image_bytes)
 
-        await update.message.reply_photo(photo=processed_image)
+        # Process price formatting (Bold `@213`)
+        final_caption = process_caption(caption)
+
+        # Agar caption customized format nahi hua to original entities maintain rakhein
+        if final_caption != caption:
+            await update.message.reply_photo(
+                photo=processed_image,
+                caption=final_caption,
+                parse_mode=ParseMode.MARKDOWN
+            )
+        else:
+            await update.message.reply_photo(
+                photo=processed_image,
+                caption=caption,
+                caption_entities=caption_entities
+            )
+
         await status_msg.delete()
 
     except Exception as e:
