@@ -103,7 +103,7 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     text = "Join @kt_deals"
     
     # Text size ko 30% chota kar diya hai (0.80 -> 0.56)
-    font_size = max(18, int(strip_height * 0.56))
+    font_size = max(22, int(strip_height * 0.6))
 
     font_data = get_font_bytes()
     if font_data:
