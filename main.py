@@ -27,10 +27,13 @@ threading.Thread(target=run_dummy_server, daemon=True).start()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Target Channels ki list (Aap multiple channels yahan add kar sakte hain)
+# Target Channels ki updated list
 TARGET_CHANNELS = [
     -1002020215978,  # c1
-    # -100xxxxxxxxxx, # c2 (Aage ke channels yahan list karein)
+    -1002487831408,  # c2
+    -1002456123241,  # c3
+    -1002362149730,  # c4
+    -1003597769059   # c5
 ]
 
 # Logo URL
@@ -88,7 +91,9 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     )
 
     text = "Join @kt_deals"
-    font_size = max(14, int(strip_height * 0.45))
+    
+    # Text size ko 1.7x bada kar diya gaya hai (Pehle 0.45 tha, ab 0.765 hai)
+    font_size = max(24, int(strip_height * 0.765))
     
     try:
         font = ImageFont.truetype("arial.ttf", font_size)
@@ -117,7 +122,6 @@ def process_caption(caption: str) -> str:
     if not caption:
         return ""
     
-    # Regular expression to replace '@123' or '@ 123' with '**@123**' or '**@ 123**'
     formatted_caption = re.sub(r'(@\s*\d+)', r'**\1**', caption)
     return formatted_caption
 
