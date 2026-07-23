@@ -33,7 +33,7 @@ TOP_LOGO_URL = os.getenv(
 
 MIDDLE_LOGO_URL = os.getenv(
     "MIDDLE_LOGO_URL",
-    "https://cdn5.telesco.pe/file/vuTl6K9-MD_rpJ3gWBdPWked_riERhAEP7DHkYGsQspTrk64l549Jo8wXnKjib0UxZ7HYHUUCP6xYXLyWGl_Nw01vsyw4W5AsfRApZIQalkrd9Q0bTsKOPhhlBW2zEO663YA1Bb-eMWLREM_NKqLQqGiY6eB-sFYKUeAD86aA0L4bRz1gADdZOg8MIN8-26rRfBeZ_XhyJ5VYzpKNoHB-yvde1eLxDC9DdslzuBERkE8uvWiVfGq3lCAj8EUHYt4_GzBRpTUIfH8baSUkIdaG_iQUl-XJtiqI6Jo4er-VkSVCf54izSn4NRGZrwViFiLtPzXiRU_tIFWUyuHft8slw.jpg"
+    "https://chatgpt.com/backend-api/estuary/content?id=file_00000000475082079d69d65adda877c4&ts=495774&p=fs&cid=1&sig=1f1773a0b2c08ce58a3335c60a828e5ee2affb98174141e679314ea8b6ff2296&v=0"
 )
 
 # Caching for faster performance
