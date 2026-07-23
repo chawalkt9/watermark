@@ -3,7 +3,7 @@ import os
 import requests
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from PIL import Image, ImageOps, ImageDraw, ImageEnhance
+from PIL import Image, ImageOps, ImageDraw
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -83,21 +83,17 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     base_img.paste(top_logo, (margin, margin), top_logo)
 
     # -------------------------------------------------------------
-    # 2. MIDDLE LOGO (50% OPACITY)
+    # 2. MIDDLE LOGO (NORMAL OPACITY)
     # -------------------------------------------------------------
     mid_logo = get_middle_logo()
     mid_w = int(width * 0.35)  # Center logo width = 35% of image width
     mid_logo = mid_logo.resize((mid_w, mid_w), Image.Resampling.LANCZOS)
 
-    # Opacity 50% karne ke liye
-    alpha = mid_logo.split()[3]
-    alpha = ImageEnhance.Brightness(alpha).enhance(0.50)  # 50% opacity
-    mid_logo.putalpha(alpha)
-
     # Center Position Calculate Karein
     mid_x = (width - mid_w) // 2
     mid_y = (height - mid_w) // 2
     
+    # Direct normal opacity par paste kar rahe hain
     base_img.paste(mid_logo, (mid_x, mid_y), mid_logo)
 
     # -------------------------------------------------------------
