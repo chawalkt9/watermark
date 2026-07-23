@@ -2,6 +2,7 @@ import io
 import os
 import re
 import requests
+import asyncio
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from PIL import Image, ImageOps, ImageDraw, ImageFont
@@ -21,13 +22,12 @@ def run_dummy_server():
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
     server.serve_forever()
 
-# Background thread me web server chalao
 threading.Thread(target=run_dummy_server, daemon=True).start()
 # ---------------------------------------------
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Target Channels ki updated list
+# Target Channels list
 TARGET_CHANNELS = [
     -1002020215978,  # c1
     -1002487831408,  # c2
@@ -36,17 +36,14 @@ TARGET_CHANNELS = [
     -1003597769059   # c5
 ]
 
-# Logo URL
 TOP_LOGO_URL = os.getenv(
     "TOP_LOGO_URL", 
     "https://cdn5.telesco.pe/file/aSf192hYDvLjeIu3QeKrEm5d5xwzUYN5wKLLNfbvOpuz6PKzQPyZ4up71rfuxRSwujzDh-AsMI4xOSplp2HjZ7lsn9-s4L-99jJG7VlKtqcG_62mytf04QZet_QoVVWlxYscNDhofqiPec2HCXUsc7DSV0c8BBLA2muRkN6IGhA9XZhjrYJqLGbLH9HFaQwImozgwXi-lBD_89f8XoiqIMS9KZaW8udXb-aEPaBgFk_sRHPr_joYXxJnXlo1pJSV8dAQuEzoxfBTR1eppST0l-BpNTDeJaPyWslYguzSIC3rr5ePrqlQ3Yldmkc0uXQhe_68AlZ6Jzdwfku0UTrbZw.jpg"
 )
 
-# Caching for faster performance
 CACHED_TOP_LOGO = None
 
 def get_circular_logo(url: str) -> Image.Image:
-    """Logo URL se download karke circular transparent PNG banata hai"""
     response = requests.get(url, timeout=10)
     logo_img = Image.open(io.BytesIO(response.content)).convert("RGBA")
     
@@ -75,13 +72,11 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     top_logo = get_top_logo()
     top_w = int(width * 0.12)
     top_logo = top_logo.resize((top_w, top_w), Image.Resampling.LANCZOS)
-    
     margin = int(width * 0.03)
     base_img.paste(top_logo, (margin, margin), top_logo)
 
-    # 2. BOTTOM LOW OPACITY BLACK STRIP WITH TEXT
+    # 2. BOTTOM LOW OPACITY STRIP WITH 1.7x TEXT
     strip_height = int(height * 0.08)
-    
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     
@@ -91,9 +86,7 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     )
 
     text = "Join @kt_deals"
-    
-    # Text size ko 1.7x bada kar diya gaya hai (Pehle 0.45 tha, ab 0.765 hai)
-    font_size = max(24, int(strip_height * 0.765))
+    font_size = max(24, int(strip_height * 0.765)) # 1.7x size
     
     try:
         font = ImageFont.truetype("arial.ttf", font_size)
@@ -118,20 +111,42 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     return output_io
 
 def process_caption(caption: str) -> str:
-    """Caption ke price part (jaise @213 ya @ 213) ko bold dynamic formatting deta hai."""
     if not caption:
         return ""
-    
-    formatted_caption = re.sub(r'(@\s*\d+)', r'**\1**', caption)
-    return formatted_caption
+    return re.sub(r'(@\s*\d+)', r'**\1**', caption)
+
+async def send_to_single_channel(context, channel_id, image_bytes, final_caption, orig_caption, entities):
+    """Helper function to send photo asynchronously to a single channel"""
+    try:
+        # Create a fresh BytesIO stream copy for each task
+        photo_stream = io.BytesIO(image_bytes)
+        
+        if final_caption != orig_caption:
+            await context.bot.send_photo(
+                chat_id=channel_id,
+                photo=photo_stream,
+                caption=final_caption,
+                parse_mode=ParseMode.MARKDOWN
+            )
+        else:
+            await context.bot.send_photo(
+                chat_id=channel_id,
+                photo=photo_stream,
+                caption=orig_caption,
+                caption_entities=entities
+            )
+        return True
+    except Exception as err:
+        print(f"Failed to send to channel {channel_id}: {err}")
+        return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Hi! Mujhe koi bhi product image bhejiyen, main Top-Left logo aur Bottom me banner add karke configured channels me send kar dunga."
+        "👋 Hi! Photo bhejiyen, main ek saath sabhi channels me fast-forward post kar dunga!"
     )
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status_msg = await update.message.reply_text("⏳ Processing Image & Sending to channels...")
+    status_msg = await update.message.reply_text("⏳ Processing & Broadcasting in Parallel...")
 
     try:
         caption = update.message.caption or ""
@@ -140,50 +155,46 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_file = await update.message.photo[-1].get_file()
         image_bytes = await photo_file.download_as_bytearray()
 
-        processed_image = add_watermarks(image_bytes)
+        processed_io = add_watermarks(image_bytes)
+        processed_bytes = processed_io.getvalue() # Raw bytes for multiple re-uses
 
-        # Dynamic Price bolding process
         final_caption = process_caption(caption)
 
-        # 1. PEHLE USER KO REPLY KARENGE
-        processed_image.seek(0)
+        # 1. USER KO PEHLE REPLY
+        user_photo = io.BytesIO(processed_bytes)
         if final_caption != caption:
             await update.message.reply_photo(
-                photo=processed_image,
+                photo=user_photo,
                 caption=final_caption,
                 parse_mode=ParseMode.MARKDOWN
             )
         else:
             await update.message.reply_photo(
-                photo=processed_image,
+                photo=user_photo,
                 caption=caption,
                 caption_entities=caption_entities
             )
 
-        # 2. AB SARE CONFIG_CHANNELS ME SEND KARENGE
-        successful_posts = 0
-        for channel_id in TARGET_CHANNELS:
-            try:
-                processed_image.seek(0)
-                if final_caption != caption:
-                    await context.bot.send_photo(
-                        chat_id=channel_id,
-                        photo=processed_image,
-                        caption=final_caption,
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                else:
-                    await context.bot.send_photo(
-                        chat_id=channel_id,
-                        photo=processed_image,
-                        caption=caption,
-                        caption_entities=caption_entities
-                    )
-                successful_posts += 1
-            except Exception as channel_err:
-                print(f"Failed to send to channel {channel_id}: {str(channel_err)}")
+        # 2. SABHI CHANNELS ME EK SAATH (PARALLEL) POSTING
+        tasks = [
+            send_to_single_channel(
+                context, 
+                channel_id, 
+                processed_bytes, 
+                final_caption, 
+                caption, 
+                caption_entities
+            )
+            for channel_id in TARGET_CHANNELS
+        ]
 
-        await status_msg.edit_text(f"✅ Processed successfully! Posted to {successful_posts}/{len(TARGET_CHANNELS)} channels.")
+        # asyncio.gather run all network calls simultaneously
+        results = await asyncio.gather(*tasks)
+        successful_posts = sum(1 for res in results if res)
+
+        await status_msg.edit_text(
+            f"🚀 **Fast Broadcast Done!**\nPosted to {successful_posts}/{len(TARGET_CHANNELS)} channels simultaneously."
+        )
 
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {str(e)}")
@@ -197,7 +208,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, handle_image))
 
-    print("🤖 Bot Active hai... Telegram par photo bhej kar check karein!")
+    print("🤖 Bot Active hai...")
     app.run_polling()
 
 if __name__ == "__main__":
