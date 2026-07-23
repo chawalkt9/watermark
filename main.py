@@ -41,7 +41,22 @@ TOP_LOGO_URL = os.getenv(
     "https://cdn5.telesco.pe/file/aSf192hYDvLjeIu3QeKrEm5d5xwzUYN5wKLLNfbvOpuz6PKzQPyZ4up71rfuxRSwujzDh-AsMI4xOSplp2HjZ7lsn9-s4L-99jJG7VlKtqcG_62mytf04QZet_QoVVWlxYscNDhofqiPec2HCXUsc7DSV0c8BBLA2muRkN6IGhA9XZhjrYJqLGbLH9HFaQwImozgwXi-lBD_89f8XoiqIMS9KZaW8udXb-aEPaBgFk_sRHPr_joYXxJnXlo1pJSV8dAQuEzoxfBTR1eppST0l-BpNTDeJaPyWslYguzSIC3rr5ePrqlQ3Yldmkc0uXQhe_68AlZ6Jzdwfku0UTrbZw.jpg"
 )
 
+# Caches
 CACHED_TOP_LOGO = None
+CACHED_FONT_BYTES = None
+
+FONT_URL = "https://github.com/google/fonts/raw/main/ofl/dejavusans/DejaVuSans-Bold.ttf"
+
+def get_font_bytes():
+    global CACHED_FONT_BYTES
+    if CACHED_FONT_BYTES is None:
+        try:
+            res = requests.get(FONT_URL, timeout=10)
+            if res.status_code == 200:
+                CACHED_FONT_BYTES = res.content
+        except Exception as e:
+            print(f"Font download error: {e}")
+    return CACHED_FONT_BYTES
 
 def get_circular_logo(url: str) -> Image.Image:
     response = requests.get(url, timeout=10)
@@ -75,7 +90,7 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     margin = int(width * 0.03)
     base_img.paste(top_logo, (margin, margin), top_logo)
 
-    # 2. BOTTOM LOW OPACITY STRIP (Patli normal height: 8%)
+    # 2. BOTTOM LOW OPACITY STRIP (8% height)
     strip_height = int(height * 0.08) 
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
@@ -87,17 +102,16 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
 
     text = "Join @kt_deals"
     
-    # Strip ke height ka 70% size (Max fit without overflow)
-    font_size = int(strip_height * 0.70)
+    # Text size ko 30% chota kar diya hai (0.80 -> 0.56)
+    font_size = max(18, int(strip_height * 0.56))
 
-    # Linux / Render compatible TTF font loading with dynamic size
-    try:
-        font = ImageFont.truetype("arial.ttf", font_size)
-    except IOError:
+    font_data = get_font_bytes()
+    if font_data:
+        font = ImageFont.truetype(io.BytesIO(font_data), font_size)
+    else:
         try:
-            # Modern Pillow supports size in default font
-            font = ImageFont.load_default(size=font_size)
-        except TypeError:
+            font = ImageFont.truetype("arial.ttf", font_size)
+        except IOError:
             font = ImageFont.load_default()
 
     bbox = draw.textbbox((0, 0), text, font=font)
