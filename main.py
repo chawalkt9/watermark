@@ -75,8 +75,9 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     margin = int(width * 0.03)
     base_img.paste(top_logo, (margin, margin), top_logo)
 
-    # 2. BOTTOM LOW OPACITY STRIP WITH 1.7x TEXT
-    strip_height = int(height * 0.08)
+    # 2. BOTTOM LOW OPACITY STRIP WITH 3x TEXT
+    # Strip ki height ko thoda badhaya gaya hai taaki 3x bada text fit aaye
+    strip_height = int(height * 0.12)
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     
@@ -86,7 +87,8 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     )
 
     text = "Join @kt_deals"
-    font_size = max(24, int(strip_height * 0.765)) # 1.7x size
+    # Text size 3x kar diya hai (Pehle 0.45 tha, ab 1.35 hai)
+    font_size = max(36, int(strip_height * 0.65)) 
     
     try:
         font = ImageFont.truetype("arial.ttf", font_size)
@@ -116,9 +118,7 @@ def process_caption(caption: str) -> str:
     return re.sub(r'(@\s*\d+)', r'**\1**', caption)
 
 async def send_to_single_channel(context, channel_id, image_bytes, final_caption, orig_caption, entities):
-    """Helper function to send photo asynchronously to a single channel"""
     try:
-        # Create a fresh BytesIO stream copy for each task
         photo_stream = io.BytesIO(image_bytes)
         
         if final_caption != orig_caption:
@@ -156,7 +156,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image_bytes = await photo_file.download_as_bytearray()
 
         processed_io = add_watermarks(image_bytes)
-        processed_bytes = processed_io.getvalue() # Raw bytes for multiple re-uses
+        processed_bytes = processed_io.getvalue()
 
         final_caption = process_caption(caption)
 
@@ -188,7 +188,6 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for channel_id in TARGET_CHANNELS
         ]
 
-        # asyncio.gather run all network calls simultaneously
         results = await asyncio.gather(*tasks)
         successful_posts = sum(1 for res in results if res)
 
