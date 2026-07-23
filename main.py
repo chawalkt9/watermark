@@ -75,9 +75,9 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     margin = int(width * 0.03)
     base_img.paste(top_logo, (margin, margin), top_logo)
 
-    # 2. BOTTOM LOW OPACITY STRIP WITH 3x TEXT
-    # Strip ki height ko thoda badhaya gaya hai taaki 3x bada text fit aaye
-    strip_height = int(height * 0.12)
+    # 2. BOTTOM LOW OPACITY STRIP WITH LARGER TEXT
+    # Strip ki height ko aur badhaya gaya hai bade text ke liye
+    strip_height = int(height * 0.15) 
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     
@@ -87,11 +87,12 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     )
 
     text = "Join @kt_deals"
-    # Text size 3x kar diya hai (Pehle 0.45 tha, ab 1.35 hai)
-    font_size = max(36, int(strip_height * 0.65)) 
+    # Text size aur bada kar diya gaya hai (ratio 0.75)
+    font_size = max(48, int(strip_height * 0.75)) 
     
     try:
-        font = ImageFont.truetype("arial.ttf", font_size)
+        # Aap chahein toh bolder font use kar sakte hain
+        font = ImageFont.truetype("arial.ttf", font_size) 
     except IOError:
         font = ImageFont.load_default()
 
