@@ -90,7 +90,7 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     margin = int(width * 0.03)
     base_img.paste(top_logo, (margin, margin), top_logo)
 
-    # 2. BOTTOM LOW OPACITY STRIP (8% height)
+    # 2. BOTTOM LOW OPACITY STRIP (Pehle wali original normal height: 8%)
     strip_height = int(height * 0.08) 
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
@@ -102,9 +102,10 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
 
     text = "Join @kt_deals"
     
-    # Text size ko 30% chota kar diya hai (0.80 -> 0.56)
-    font_size = max(22, int(strip_height * 0.6))
+    # Strip height ke hisab se text maximum size mein fit hoga (80% of strip height)
+    font_size = max(24, int(strip_height * 0.80))
 
+    # Memory se TrueType Font load karenge taaki Render server par text perfect scale ho
     font_data = get_font_bytes()
     if font_data:
         font = ImageFont.truetype(io.BytesIO(font_data), font_size)
