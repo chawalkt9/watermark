@@ -3,7 +3,7 @@ import os
 import requests
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from PIL import Image, ImageOps, ImageDraw
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -25,20 +25,14 @@ threading.Thread(target=run_dummy_server, daemon=True).start()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Logos URLs
+# Logo URL
 TOP_LOGO_URL = os.getenv(
     "TOP_LOGO_URL", 
     "https://cdn5.telesco.pe/file/aSf192hYDvLjeIu3QeKrEm5d5xwzUYN5wKLLNfbvOpuz6PKzQPyZ4up71rfuxRSwujzDh-AsMI4xOSplp2HjZ7lsn9-s4L-99jJG7VlKtqcG_62mytf04QZet_QoVVWlxYscNDhofqiPec2HCXUsc7DSV0c8BBLA2muRkN6IGhA9XZhjrYJqLGbLH9HFaQwImozgwXi-lBD_89f8XoiqIMS9KZaW8udXb-aEPaBgFk_sRHPr_joYXxJnXlo1pJSV8dAQuEzoxfBTR1eppST0l-BpNTDeJaPyWslYguzSIC3rr5ePrqlQ3Yldmkc0uXQhe_68AlZ6Jzdwfku0UTrbZw.jpg"
 )
 
-MIDDLE_LOGO_URL = os.getenv(
-    "MIDDLE_LOGO_URL",
-    "https://plain-apac-prod-public.komododecks.com/202607/23/mNVcqesICPeaxPq1s4ui/image.png"
-)
-
 # Caching for faster performance
 CACHED_TOP_LOGO = None
-CACHED_MIDDLE_LOGO = None
 
 def get_circular_logo(url: str) -> Image.Image:
     """Logo URL se download karke circular transparent PNG banata hai"""
@@ -62,12 +56,6 @@ def get_top_logo() -> Image.Image:
         CACHED_TOP_LOGO = get_circular_logo(TOP_LOGO_URL)
     return CACHED_TOP_LOGO.copy()
 
-def get_middle_logo() -> Image.Image:
-    global CACHED_MIDDLE_LOGO
-    if CACHED_MIDDLE_LOGO is None:
-        CACHED_MIDDLE_LOGO = get_circular_logo(MIDDLE_LOGO_URL)
-    return CACHED_MIDDLE_LOGO.copy()
-
 def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     base_img = Image.open(io.BytesIO(base_image_bytes)).convert("RGBA")
     width, height = base_img.size
@@ -83,18 +71,42 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     base_img.paste(top_logo, (margin, margin), top_logo)
 
     # -------------------------------------------------------------
-    # 2. MIDDLE LOGO (NORMAL OPACITY)
+    # 2. BOTTOM LOW OPACITY BLACK STRIP WITH TEXT
     # -------------------------------------------------------------
-    mid_logo = get_middle_logo()
-    mid_w = int(width * 0.35)  # Center logo width = 35% of image width
-    mid_logo = mid_logo.resize((mid_w, mid_w), Image.Resampling.LANCZOS)
-
-    # Center Position Calculate Karein
-    mid_x = (width - mid_w) // 2
-    mid_y = (height - mid_w) // 2
+    strip_height = int(height * 0.08)  # Strip height (Image height ka 8%)
     
-    # Direct normal opacity par paste kar rahe hain
-    base_img.paste(mid_logo, (mid_x, mid_y), mid_logo)
+    # Overlay canvas for drawing transparent shape
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    
+    # Black banner width 80% opacity (RGB: 0,0,0, Alpha: 200)
+    draw.rectangle(
+        [(0, height - strip_height), (width, height)],
+        fill=(0, 0, 0, 200)
+    )
+
+    # Text Settings
+    text = "Join @kt_deals"
+    font_size = max(14, int(strip_height * 0.45))  # Font size scaled to strip height
+    
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size)
+    except IOError:
+        font = ImageFont.load_default()
+
+    # Calculate text dimensions to center it
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    text_x = (width - text_w) // 2
+    text_y = (height - strip_height) + (strip_height - text_h) // 2 - bbox[1]
+
+    # White text draw karo overlay par
+    draw.text((text_x, text_y), text, fill=(255, 255, 255, 255), font=font)
+
+    # Base Image ke saath Combine karo
+    base_img = Image.alpha_composite(base_img, overlay)
 
     # -------------------------------------------------------------
     # Output Buffer Save
@@ -107,7 +119,7 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Hi! Mujhe koi bhi product image bhejiyen, main Top-Left aur Center me logo add karke bhej dunga."
+        "👋 Hi! Mujhe koi bhi product image bhejiyen, main Top-Left logo aur Bottom me banner add karke bhej dunga."
     )
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
