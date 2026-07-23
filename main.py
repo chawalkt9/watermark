@@ -27,6 +27,12 @@ threading.Thread(target=run_dummy_server, daemon=True).start()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+# Target Channels ki list (Aap multiple channels yahan add kar sakte hain)
+TARGET_CHANNELS = [
+    -1002020215978,  # c1
+    # -100xxxxxxxxxx, # c2 (Aage ke channels yahan list karein)
+]
+
 # Logo URL
 TOP_LOGO_URL = os.getenv(
     "TOP_LOGO_URL", 
@@ -62,41 +68,33 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     base_img = Image.open(io.BytesIO(base_image_bytes)).convert("RGBA")
     width, height = base_img.size
 
-    # -------------------------------------------------------------
     # 1. TOP-LEFT LOGO
-    # -------------------------------------------------------------
     top_logo = get_top_logo()
-    top_w = int(width * 0.12)  # Base image ka 12% width
+    top_w = int(width * 0.12)
     top_logo = top_logo.resize((top_w, top_w), Image.Resampling.LANCZOS)
     
     margin = int(width * 0.03)
     base_img.paste(top_logo, (margin, margin), top_logo)
 
-    # -------------------------------------------------------------
     # 2. BOTTOM LOW OPACITY BLACK STRIP WITH TEXT
-    # -------------------------------------------------------------
-    strip_height = int(height * 0.08)  # Strip height (Image height ka 8%)
+    strip_height = int(height * 0.08)
     
-    # Overlay canvas for drawing transparent shape
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     
-    # Black banner width 80% opacity (RGB: 0,0,0, Alpha: 200)
     draw.rectangle(
         [(0, height - strip_height), (width, height)],
         fill=(0, 0, 0, 200)
     )
 
-    # Text Settings
     text = "Join @kt_deals"
-    font_size = max(14, int(strip_height * 0.45))  # Font size scaled to strip height
+    font_size = max(14, int(strip_height * 0.45))
     
     try:
         font = ImageFont.truetype("arial.ttf", font_size)
     except IOError:
         font = ImageFont.load_default()
 
-    # Calculate text dimensions to center it
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
@@ -104,15 +102,10 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     text_x = (width - text_w) // 2
     text_y = (height - strip_height) + (strip_height - text_h) // 2 - bbox[1]
 
-    # White text draw karo overlay par
     draw.text((text_x, text_y), text, fill=(255, 255, 255, 255), font=font)
 
-    # Base Image ke saath Combine karo
     base_img = Image.alpha_composite(base_img, overlay)
 
-    # -------------------------------------------------------------
-    # Output Buffer Save
-    # -------------------------------------------------------------
     output_io = io.BytesIO()
     base_img.convert("RGB").save(output_io, format="JPEG", quality=95)
     output_io.seek(0)
@@ -130,14 +123,13 @@ def process_caption(caption: str) -> str:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Hi! Mujhe koi bhi product image bhejiyen, main Top-Left logo aur Bottom me banner add karke bhej dunga."
+        "👋 Hi! Mujhe koi bhi product image bhejiyen, main Top-Left logo aur Bottom me banner add karke configured channels me send kar dunga."
     )
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status_msg = await update.message.reply_text("⏳ Processing Image...")
+    status_msg = await update.message.reply_text("⏳ Processing Image & Sending to channels...")
 
     try:
-        # Original caption aur entities extract karna
         caption = update.message.caption or ""
         caption_entities = update.message.caption_entities
 
@@ -146,10 +138,11 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         processed_image = add_watermarks(image_bytes)
 
-        # Process price formatting (Bold `@213`)
+        # Dynamic Price bolding process
         final_caption = process_caption(caption)
 
-        # Agar caption customized format nahi hua to original entities maintain rakhein
+        # 1. PEHLE USER KO REPLY KARENGE
+        processed_image.seek(0)
         if final_caption != caption:
             await update.message.reply_photo(
                 photo=processed_image,
@@ -163,7 +156,30 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 caption_entities=caption_entities
             )
 
-        await status_msg.delete()
+        # 2. AB SARE CONFIG_CHANNELS ME SEND KARENGE
+        successful_posts = 0
+        for channel_id in TARGET_CHANNELS:
+            try:
+                processed_image.seek(0)
+                if final_caption != caption:
+                    await context.bot.send_photo(
+                        chat_id=channel_id,
+                        photo=processed_image,
+                        caption=final_caption,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                else:
+                    await context.bot.send_photo(
+                        chat_id=channel_id,
+                        photo=processed_image,
+                        caption=caption,
+                        caption_entities=caption_entities
+                    )
+                successful_posts += 1
+            except Exception as channel_err:
+                print(f"Failed to send to channel {channel_id}: {str(channel_err)}")
+
+        await status_msg.edit_text(f"✅ Processed successfully! Posted to {successful_posts}/{len(TARGET_CHANNELS)} channels.")
 
     except Exception as e:
         await status_msg.edit_text(f"❌ Error: {str(e)}")
