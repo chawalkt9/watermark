@@ -75,9 +75,8 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     margin = int(width * 0.03)
     base_img.paste(top_logo, (margin, margin), top_logo)
 
-    # 2. BOTTOM LOW OPACITY STRIP WITH LARGER TEXT
-    # Strip ki height ko aur badhaya gaya hai bade text ke liye
-    strip_height = int(height * 0.15) 
+    # 2. BOTTOM LOW OPACITY STRIP (Patli normal height: 8%)
+    strip_height = int(height * 0.08) 
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     
@@ -87,14 +86,19 @@ def add_watermarks(base_image_bytes: bytes) -> io.BytesIO:
     )
 
     text = "Join @kt_deals"
-    # Text size aur bada kar diya gaya hai (ratio 0.75)
-    font_size = max(48, int(strip_height * 0.75)) 
     
+    # Strip ke height ka 70% size (Max fit without overflow)
+    font_size = int(strip_height * 0.70)
+
+    # Linux / Render compatible TTF font loading with dynamic size
     try:
-        # Aap chahein toh bolder font use kar sakte hain
-        font = ImageFont.truetype("arial.ttf", font_size) 
+        font = ImageFont.truetype("arial.ttf", font_size)
     except IOError:
-        font = ImageFont.load_default()
+        try:
+            # Modern Pillow supports size in default font
+            font = ImageFont.load_default(size=font_size)
+        except TypeError:
+            font = ImageFont.load_default()
 
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
